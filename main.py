@@ -9,8 +9,9 @@ app = FastAPI()
 class ProductRequest(BaseModel):
     product_url: str
     webhook_url: str
+    id_produit: str  # 1. On ajoute le champ pour recevoir l'ID envoyé par Make
 
-async def extraire_et_envoyer(product_url: str, webhook_url: str):
+async def extraire_et_envoyer(product_url: str, webhook_url: str, id_produit: str): # 2. On passe l'ID en paramètre ici
     async with async_playwright() as p:
         # Lancement d'un Chrome invisible configuré comme un vrai PC
         browser = await p.chromium.launch(headless=True)
@@ -40,8 +41,13 @@ async def extraire_et_envoyer(product_url: str, webhook_url: str):
         finally:
             await browser.close()
 
-        # Envoi immédiat du résultat à ton Webhook Make
-        payload = {"product_url": product_url, "video_url": video_url}
+        # 3. On ajoute l'id_produit dans le dictionnaire envoyé au Scénario 2 de Make
+        payload = {
+            "id_produit": id_produit,
+            "product_url": product_url, 
+            "video_url": video_url
+        }
+        
         try:
             requests.post(webhook_url, json=payload, timeout=10)
         except Exception as e:
@@ -49,6 +55,11 @@ async def extraire_et_envoyer(product_url: str, webhook_url: str):
 
 @app.post("/extract")
 def extract_video(request: ProductRequest, background_tasks: BackgroundTasks):
-    # On exécute le scraping en arrière-plan pour que Render réponde instantanément à Make
-    background_tasks.add_task(extraire_et_envoyer, request.product_url, request.webhook_url)
+    # On exécute le scraping en arrière-plan en lui transmettant le nouvel ID
+    background_tasks.add_task(
+        extraire_et_envoyer, 
+        request.product_url, 
+        request.webhook_url, 
+        request.id_produit  # Transmis ici
+    )
     return {"status": "Scraping en cours"}
